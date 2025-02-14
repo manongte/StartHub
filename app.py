@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 
 # Initialisation de l'application
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
+port = int(os.environ.get("PORT", 8080))
 
 #Configuration du cache
 cache = Cache(app.server, config={'CACHE_TYPE': 'filesystem', 'CACHE_DIR': 'cache-directory'})
