@@ -7,6 +7,7 @@ from flask_caching import Cache
 from io import StringIO
 import plotly.express as px
 import plotly.graph_objects as go
+import os
 
 
 # Initialisation de l'application
