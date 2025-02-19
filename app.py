@@ -198,15 +198,15 @@ def update_funding_graph(sector, year_range, effectif):
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
     ])
-
 def update_series_graph(sector, year_range, effectif):
     df = get_dataframe("financements.csv") 
     df['Date dernier financement'] = pd.to_datetime(df['Date dernier financement'], errors='coerce')
     df['Année'] = df['Date dernier financement'].dt.year
     df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0) 
+
     df_societe = get_dataframe("societes.csv")
     df_societe['date_creation_def'] = pd.to_datetime(df_societe['date_creation_def'], errors="coerce")
-    df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year  # Extraire l'année
+    df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year  
 
     # Appliquer les filtres
     if sector:
@@ -215,16 +215,24 @@ def update_series_graph(sector, year_range, effectif):
         df_societe = df_societe[df_societe["Effectif_def"].isin(effectif)]
     if year_range:
         df_societe = df_societe[
-            (df_societe["annee_creation"].notna()) &  # Évite les NaN
-            (df_societe["annee_creation"].between(year_range[0], year_range[1])
-             )
+            (df_societe["annee_creation"].notna()) &
+            (df_societe["annee_creation"].between(year_range[0], year_range[1]))
         ]
 
     df = df[df["entreprise_id"].isin(df_societe["entreprise_id"])]
+
+    # Vérifier si df est vide après filtrage
+    if df.empty:
+        return px.bar(title="Aucune donnée disponible")
+
+    # Correction : Renommer correctement les colonnes après value_counts()
     funding_by_series = df["Série"].value_counts().nlargest(10).reset_index()
-    fig2 = px.bar(funding_by_series, x='index', y='Série')
+    funding_by_series.columns = ['Série', 'Nombre']
+
+    fig2 = px.bar(funding_by_series, x='Série', y='Nombre')
 
     return fig2
+
 
 @app.callback(
     Output("startup-year", "figure"),
@@ -549,6 +557,7 @@ def update_top_subcategories(sector, year_range, effectif):
     df2['date_creation_def'] = pd.to_datetime(df2['date_creation_def'], errors="coerce")
     df2["annee_creation"] = df2["date_creation_def"].dt.year
 
+    # Appliquer les filtres
     if sector:
         df2 = df2[df2["Activité principale"].isin(sector)]
     if effectif:
@@ -559,24 +568,32 @@ def update_top_subcategories(sector, year_range, effectif):
             (df2["annee_creation"].between(year_range[0], year_range[1]))
         ]
 
-    df2 = df2[df2['Sous-Catégorie'] != 0] 
-    top_years = df2.loc[df2["Sous-Catégorie"] != "Divers", "Sous-Catégorie"].value_counts().nlargest(10)
+    # Vérifier si la colonne 'Sous-Catégorie' existe et contient des valeurs valides
+    if "Sous-Catégorie" not in df2.columns or df2["Sous-Catégorie"].dropna().empty:
+        return px.bar(title="Aucune donnée disponible")
 
+    # Séparer les sous-catégories (elles sont séparées par "|") et compter les occurrences uniques
+    subcategories = df2["Sous-Catégorie"].dropna().str.split('|', expand=True).stack()
+    subcategory_counts = subcategories.value_counts().nlargest(10)
+
+    # Création du graphique
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=top_years.sort_values(ascending=True).values,
-        y=top_years.sort_values(ascending=True).index.astype(str),
+        x=subcategory_counts.values,
+        y=subcategory_counts.index.astype(str),
         orientation='h',
         marker=dict(color='royalblue'),
     ))
 
     fig.update_layout(
+        title="Top 10 des sous-catégories de mots-clés",
         xaxis_title="Fréquence",
-        yaxis_title="Sous-catégorie de mots-clés",
+        yaxis_title="Sous-catégorie",
         yaxis=dict(categoryorder='total ascending')
     )
 
     return fig
+
 
 if __name__ == '__main__':
     app.run_server(debug=True)
