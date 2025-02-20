@@ -2,11 +2,9 @@
 io_config.yaml
 .env
 # Ignorer les fichiers de cache
-dash_app/cache-directory/
+/cache-directory/
 **/__pycache__/
-dash_app/assets/financements.csv
-dash_app/assets/financements.csv
-dash_app/assets/societes.csv
-dash_app/assets/financements.csv
+# Ignorer les fichiers CSV dans /assets/
+assets/*.csv
 merged_df.csv
 
