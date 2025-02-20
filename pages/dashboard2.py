@@ -21,6 +21,7 @@ df['Date dernier financement'] = pd.to_datetime(df['Date dernier financement'], 
 df['Année'] = df['Date dernier financement'].dt.year
 df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0)
 
+unique_categories = df_societe["Sous-Catégorie"].dropna().str.split('|').explode().unique()
 
 ################################################################################ LAYOUT ###############################################################################
 
@@ -44,14 +45,14 @@ layout = html.Div([
         dbc.Row([
             # Filtre Activité principale
             dbc.Col([
-                html.Label("Activité principale", className="text-muted mb-2"),
-                dcc.Dropdown(
-                    id="sector-filter",
-                    options=[{"label": secteur, "value": secteur} for secteur in df_societe["Activité principale"].dropna().unique()],
-                    placeholder="Tous les secteurs",
+                html.Label("Recherche par catégorie", className="text-muted mb-2"),
+                 dcc.Dropdown(
+                    id='keyword-dropdown',
+                    options=[{'label': cat, 'value': cat} for cat in unique_categories],
                     multi=True,
+                    placeholder="Sélectionnez une catégorie",
                     className="mb-3"
-                )
+                ),
             ], md=4),
 
             # Filtre Année de Création

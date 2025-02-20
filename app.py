@@ -9,16 +9,15 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 
-
 # Initialisation de l'application
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
 port = int(os.environ.get("PORT", 8080))
 
-#Configuration du cache
+# Configuration du cache
 cache = Cache(app.server, config={'CACHE_TYPE': 'filesystem', 'CACHE_DIR': 'cache-directory'})
-TIMEOUT = None #cache permanent jusqu'à redémarrage de l'app 
+TIMEOUT = None  # Cache permanent jusqu'à redémarrage de l'app
 
-#Chargement des csv
+# Chargement des csv
 @cache.memoize(timeout=TIMEOUT)
 def query_all_data():
     files = ["societes.csv", "financements.csv", "personnes.csv"]  # Liste des fichiers à charger
@@ -34,7 +33,7 @@ def get_dataframe(filename):
     json_string = dataframes[filename]  # Récupère la chaîne JSON
     return pd.read_json(StringIO(json_string), orient='split')  # Convertit en DataFrame en utilisant StringIO pour le FutureWarning
 
-from pages import home, projet, dashboard2, map, equipe, amelioration # Importer les pages
+from pages import home, projet, dashboard2, map, equipe, amelioration  # Importer les pages
 
 # Barre de navigation
 navbar = dbc.NavbarSimple(
@@ -49,7 +48,7 @@ navbar = dbc.NavbarSimple(
         dbc.NavItem(dbc.NavLink("Dashboard", href="/dashboard2")),
         dbc.NavItem(dbc.NavLink("Carte", href="/map")),
         dbc.NavItem(dbc.NavLink("Amélioration", href="/amelioration"))
-        ])
+    ])
 
 # Layout
 app.layout = html.Div([
@@ -77,30 +76,31 @@ def display_page(pathname):
     else:
         return home.layout
 
+# Callbacks pour les filtres et les graphiques
 @app.callback(
-    Output("mean-funding", "children"),  
+    Output("mean-funding", "children"),
     [
-        Input('sector-filter', 'value'),
+        Input('keyword-dropdown', 'value'),  # Remplacez 'sector-filter' par 'keyword-dropdown'
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
-    ]  
+    ]
 )
-def mean_funding(sector, year_range, effectif):
-    df = get_dataframe("financements.csv")  
+def mean_funding(categories, year_range, effectif):  # Renommez 'sector' en 'categories'
+    df = get_dataframe("financements.csv")
     df['Montant_def'] = pd.to_numeric(df['Montant_def'], errors='coerce')  # Conversion en float
 
-    # Charger les données sociétés pour le filtre sur l'activité et l'effectif
+    # Charger les données sociétés pour le filtre sur les catégories et l'effectif
     df_societe = get_dataframe("societes.csv")
     df_societe['date_creation_def'] = pd.to_datetime(df_societe['date_creation_def'], errors="coerce")
     df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year  # Extraire l'année
 
     # Appliquer les filtres
-    if sector:
-        df_societe = df_societe[df_societe["Activité principale"].isin(sector)]
+    if categories:
+        df_societe = df_societe[df_societe["Sous-Catégorie"].str.contains('|'.join(categories), na=False)]
     if effectif:
         df_societe = df_societe[df_societe["Effectif_def"].isin(effectif)]
     if year_range:
-        df_societe = df_societe[(df_societe["annee_creation"] >= year_range[0]) & 
+        df_societe = df_societe[(df_societe["annee_creation"] >= year_range[0]) &
                                 (df_societe["annee_creation"] <= year_range[1])]
 
     # Filtrer les entreprises en fonction des sociétés filtrées
@@ -114,34 +114,33 @@ def mean_funding(sector, year_range, effectif):
 
     return f"{mean_funding:,.0f} €".replace(",", " ")
 
-
 @app.callback(
     Output("total-funding", "children"),
     [
-        Input('sector-filter', 'value'),
+        Input('keyword-dropdown', 'value'),  # Remplacez 'sector-filter' par 'keyword-dropdown'
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
-    ]  
+    ]
 )
-def total_funding(sector, year_range, effectif):
-    df = get_dataframe("financements.csv")  
+def total_funding(categories, year_range, effectif):  # Renommez 'sector' en 'categories'
+    df = get_dataframe("financements.csv")
     df_societe = get_dataframe("societes.csv")  # Charge une seule fois
 
     # Conversion des colonnes
-    df['Montant_def'] = pd.to_numeric(df['Montant_def'], errors='coerce')  
+    df['Montant_def'] = pd.to_numeric(df['Montant_def'], errors='coerce')
     df_societe['date_creation_def'] = pd.to_datetime(
-        df_societe['date_creation_def'], 
+        df_societe['date_creation_def'],
         errors="coerce")
-    df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year  #Extraire l'année
+    df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year  # Extraire l'année
 
     # Appliquer les filtres
-    if sector:
-        df_societe = df_societe[df_societe["Activité principale"].isin(sector)]
-    elif effectif:
-        df_societe = df_societe[df_societe["Effectif_def"].isin(effectif)] 
-    elif year_range:
+    if categories:
+        df_societe = df_societe[df_societe["Sous-Catégorie"].str.contains('|'.join(categories), na=False)]
+    if effectif:
+        df_societe = df_societe[df_societe["Effectif_def"].isin(effectif)]
+    if year_range:
         df_societe = df_societe[
-            (df_societe["annee_creation"].notna()) &  # évite les NaN
+            (df_societe["annee_creation"].notna()) &  # Évite les NaN
             (df_societe["annee_creation"].between(year_range[0], year_range[1]))
         ]
 
@@ -153,28 +152,27 @@ def total_funding(sector, year_range, effectif):
 
     return f"{total_funding:,.0f} €".replace(",", " ")
 
-#Callback pour rendre le graph funding dynamique
 @app.callback(
     Output("funding-evolution", "figure"),
     [
-        Input('sector-filter', 'value'),
+        Input('keyword-dropdown', 'value'),  # Remplacez 'sector-filter' par 'keyword-dropdown'
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
-    ])
-
-def update_funding_graph(sector, year_range, effectif):
-    df = get_dataframe("financements.csv") 
+    ]
+)
+def update_funding_graph(categories, year_range, effectif):  # Renommez 'sector' en 'categories'
+    df = get_dataframe("financements.csv")
     df['Date dernier financement'] = pd.to_datetime(df['Date dernier financement'], errors='coerce')
     df['Année'] = df['Date dernier financement'].dt.year
-    df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0) 
+    df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0)
 
     df_societe = get_dataframe("societes.csv")
     df_societe['date_creation_def'] = pd.to_datetime(df_societe['date_creation_def'], errors="coerce")
-    df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year 
+    df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year
 
     # Appliquer les filtres
-    if sector:
-        df_societe = df_societe[df_societe["Activité principale"].isin(sector)]
+    if categories:
+        df_societe = df_societe[df_societe["Sous-Catégorie"].str.contains('|'.join(categories), na=False)]
     if effectif:
         df_societe = df_societe[df_societe["Effectif_def"].isin(effectif)]
     if year_range:
@@ -184,7 +182,7 @@ def update_funding_graph(sector, year_range, effectif):
         ]
 
     # Filtre sur les financements en fonction des sociétés sélectionnées
-    df = df[df["entreprise_id"].isin(df_societe["entreprise_id"])] 
+    df = df[df["entreprise_id"].isin(df_societe["entreprise_id"])]
 
     funding_by_year = df.groupby('Année')['Montant_def'].sum().reset_index()
     fig1 = px.line(funding_by_year, x='Année', y='Montant_def')
@@ -194,23 +192,24 @@ def update_funding_graph(sector, year_range, effectif):
 @app.callback(
     Output("serie-funding", "figure"),
     [
-        Input('sector-filter', 'value'),
+        Input('keyword-dropdown', 'value'),  # Remplacez 'sector-filter' par 'keyword-dropdown'
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
-    ])
-def update_series_graph(sector, year_range, effectif):
-    df = get_dataframe("financements.csv") 
+    ]
+)
+def update_series_graph(categories, year_range, effectif):  # Renommez 'sector' en 'categories'
+    df = get_dataframe("financements.csv")
     df['Date dernier financement'] = pd.to_datetime(df['Date dernier financement'], errors='coerce')
     df['Année'] = df['Date dernier financement'].dt.year
-    df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0) 
+    df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0)
 
     df_societe = get_dataframe("societes.csv")
     df_societe['date_creation_def'] = pd.to_datetime(df_societe['date_creation_def'], errors="coerce")
-    df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year  
+    df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year
 
     # Appliquer les filtres
-    if sector:
-        df_societe = df_societe[df_societe["Activité principale"].isin(sector)]
+    if categories:
+        df_societe = df_societe[df_societe["Sous-Catégorie"].str.contains('|'.join(categories), na=False)]
     if effectif:
         df_societe = df_societe[df_societe["Effectif_def"].isin(effectif)]
     if year_range:
@@ -233,27 +232,26 @@ def update_series_graph(sector, year_range, effectif):
 
     return fig2
 
-
 @app.callback(
     Output("startup-year", "figure"),
     [
-        Input('sector-filter', 'value'),
+        Input('keyword-dropdown', 'value'),  # Remplacez 'sector-filter' par 'keyword-dropdown'
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
-    ])
-
-def startup_per_year(sector, year_range, effectif):
-    df = get_dataframe("financements.csv") 
+    ]
+)
+def startup_per_year(categories, year_range, effectif):  # Renommez 'sector' en 'categories'
+    df = get_dataframe("financements.csv")
     df['Date dernier financement'] = pd.to_datetime(df['Date dernier financement'], errors='coerce')
     df['Année'] = df['Date dernier financement'].dt.year
-    df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0) 
+    df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0)
     df_societe = get_dataframe("societes.csv")
     df_societe['date_creation_def'] = pd.to_datetime(df_societe['date_creation_def'], errors="coerce")
     df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year  # Extraire l'année
 
     # Appliquer les filtres
-    if sector:
-        df_societe = df_societe[df_societe["Activité principale"].isin(sector)]
+    if categories:
+        df_societe = df_societe[df_societe["Sous-Catégorie"].str.contains('|'.join(categories), na=False)]
     if effectif:
         df_societe = df_societe[df_societe["Effectif_def"].isin(effectif)]
     if year_range:
@@ -262,9 +260,9 @@ def startup_per_year(sector, year_range, effectif):
             (df_societe["annee_creation"].between(1986, year_range[1]))
         ]
 
-    df = df[df["entreprise_id"].isin(df_societe["entreprise_id"])]  
+    df = df[df["entreprise_id"].isin(df_societe["entreprise_id"])]
     startups_by_year = df_societe.groupby('annee_creation').agg({'entreprise_id': 'count'}).reset_index()
-    startups_by_year.columns = ['annee_creation', 'nombre_startups'] 
+    startups_by_year.columns = ['annee_creation', 'nombre_startups']
 
     fig3 = px.line(startups_by_year, x='annee_creation', y='nombre_startups')
 
@@ -273,72 +271,69 @@ def startup_per_year(sector, year_range, effectif):
 @app.callback(
     Output("top-funded", "figure"),
     [
-        Input('sector-filter', 'value'),
+        Input('keyword-dropdown', 'value'),  # Remplacez 'sector-filter' par 'keyword-dropdown'
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
-    ])
-
-def top_funded(sector, year_range, effectif):
-    df = get_dataframe("financements.csv") 
+    ]
+)
+def top_funded(categories, year_range, effectif):  # Renommez 'sector' en 'categories'
+    df = get_dataframe("financements.csv")
     df['Date dernier financement'] = pd.to_datetime(df['Date dernier financement'], errors='coerce')
     df['Année'] = df['Date dernier financement'].dt.year
-    df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0) 
+    df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0)
     df_societe = get_dataframe("societes.csv")
     df_societe['date_creation_def'] = pd.to_datetime(df_societe['date_creation_def'], errors="coerce")
-    df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year  #Extraire l'année
+    df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year  # Extraire l'année
 
     # Appliquer les filtres
-    if sector:
-        df_societe = df_societe[df_societe["Activité principale"].isin(sector)]
+    if categories:
+        df_societe = df_societe[df_societe["Sous-Catégorie"].str.contains('|'.join(categories), na=False)]
     if effectif:
-        df_societe = df_societe[df_societe["Effectif_def"].isin(effectif)]  #Comparaison directe
+        df_societe = df_societe[df_societe["Effectif_def"].isin(effectif)]
     if year_range:
         df_societe = df_societe[
             (df_societe["annee_creation"].notna()) &  # Évite les NaN
-            (df_societe["annee_creation"].between(year_range[0], year_range[1])
-             )
+            (df_societe["annee_creation"].between(year_range[0], year_range[1]))
         ]
 
     df = df[df["entreprise_id"].isin(df_societe["entreprise_id"])]
-    
+
     top_funded_companies = df.groupby("entreprise_id")["Montant_def"].sum().nlargest(10).reset_index()
     top_funded_companies = top_funded_companies.merge(df_societe, on="entreprise_id", how="left")
     fig4 = px.bar(top_funded_companies, x='nom', y='Montant_def')
 
     return fig4
 
-
 @app.callback(
     Output("pourc-leve", "children"),
     [
-        Input('sector-filter', 'value'),
+        Input('keyword-dropdown', 'value'),  # Remplacez 'sector-filter' par 'keyword-dropdown'
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
-    ])
-
-def pourc_levee(sector, year_range, effectif):
-    df = get_dataframe("financements.csv") 
+    ]
+)
+def pourc_levee(categories, year_range, effectif):  # Renommez 'sector' en 'categories'
+    df = get_dataframe("financements.csv")
     df['Date dernier financement'] = pd.to_datetime(df['Date dernier financement'], errors='coerce')
     df['Année'] = df['Date dernier financement'].dt.year
-    df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0) 
+    df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0)
     df_societe = get_dataframe("societes.csv")
     df_societe['date_creation_def'] = pd.to_datetime(df_societe['date_creation_def'], errors="coerce")
     df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year  # Extraire l'année
 
     # Appliquer les filtres
-    if sector:
-        df_societe = df_societe[df_societe["Activité principale"].isin(sector)]
+    if categories:
+        df_societe = df_societe[df_societe["Sous-Catégorie"].str.contains('|'.join(categories), na=False)]
     if effectif:
         df_societe = df_societe[df_societe["Effectif_def"].isin(effectif)]
     if year_range:
         df_societe = df_societe[
             (df_societe["annee_creation"].notna()) &  # Évite les NaN
-            (df_societe["annee_creation"].between(year_range[0], year_range[1])
-             )
+            (df_societe["annee_creation"].between(year_range[0], year_range[1]))
         ]
 
     df = df[df["entreprise_id"].isin(df_societe["entreprise_id"])]
-    
+
     # Calcul de la part des entreprises ayant levé des fonds
     nb_total_entreprises = df_societe.shape[0]
     nb_entreprises_funded = df["Montant_def"].nunique()
@@ -346,26 +341,26 @@ def pourc_levee(sector, year_range, effectif):
 
     return f"{part_funded:.2f}%"
 
-
 @app.callback(
     Output("nbre-startup", "children"),
     [
-        Input('sector-filter', 'value'),
+        Input('keyword-dropdown', 'value'),  # Remplacez 'sector-filter' par 'keyword-dropdown'
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
-    ])
-def nbre_startup(sector, year_range, effectif):
-    df = get_dataframe("financements.csv") 
+    ]
+)
+def nbre_startup(categories, year_range, effectif):  # Renommez 'sector' en 'categories'
+    df = get_dataframe("financements.csv")
     df['Date dernier financement'] = pd.to_datetime(df['Date dernier financement'], errors='coerce')
     df['Année'] = df['Date dernier financement'].dt.year
-    df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0) 
+    df['Montant_def'] = pd.to_numeric(df["Montant_def"], errors='coerce').fillna(0)
     df_societe = get_dataframe("societes.csv")
     df_societe['date_creation_def'] = pd.to_datetime(df_societe['date_creation_def'], errors="coerce")
     df_societe["annee_creation"] = df_societe["date_creation_def"].dt.year  # Extraire l'année
 
     # Appliquer les filtres
-    if sector:
-        df_societe = df_societe[df_societe["Activité principale"].isin(sector)]
+    if categories:
+        df_societe = df_societe[df_societe["Sous-Catégorie"].str.contains('|'.join(categories), na=False)]
     if effectif:
         df_societe = df_societe[df_societe["Effectif_def"].isin(effectif)]
     if year_range:
@@ -384,17 +379,15 @@ def nbre_startup(sector, year_range, effectif):
 
     return formatted_nbre_start
 
-
-
 @app.callback(
     Output("top-sector", "figure"),
     [
-        Input('sector-filter', 'value'),
+        Input('keyword-dropdown', 'value'),  # Remplacez 'sector-filter' par 'keyword-dropdown'
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
-    ])
-
-def top_sector(sector, year_range, effectif):
+    ]
+)
+def top_sector(categories, year_range, effectif):  # Renommez 'sector' en 'categories'
     df = get_dataframe("societes.csv")
     df['date_creation_def'] = pd.to_datetime(df['date_creation_def'], errors="coerce")
     df["annee_creation"] = df["date_creation_def"].dt.year  # Extraire l'année
@@ -433,9 +426,9 @@ def top_sector(sector, year_range, effectif):
     # Étape 2 : Mapper avec le dictionnaire des secteurs
     df['Nom Secteur'] = df['Secteur'].map(dict_secteurs)
     # Calculer la distribution des valeurs et trier par ordre décroissant
-    
-    if sector:
-        df = df[df["Activité principale"].isin(sector)]
+
+    if categories:
+        df = df[df["Sous-Catégorie"].str.contains('|'.join(categories), na=False)]
     if effectif:
         df = df[df["Effectif_def"].isin(effectif)]
     if year_range:
@@ -455,21 +448,20 @@ def top_sector(sector, year_range, effectif):
 
     return fig5
 
-
 @app.callback(
     Output("top-startup-size", "figure"),
     [
-        Input('sector-filter', 'value'),
+        Input('keyword-dropdown', 'value'),  # Remplacez 'sector-filter' par 'keyword-dropdown'
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
-    ])
-
-def top_startup_size(sector, year_range, effectif):
+    ]
+)
+def top_startup_size(categories, year_range, effectif):  # Renommez 'sector' en 'categories'
     df = get_dataframe("societes.csv")
     df['date_creation_def'] = pd.to_datetime(df['date_creation_def'], errors="coerce")
     df["annee_creation"] = df["date_creation_def"].dt.year  # Extraire l'année
-    if sector:
-        df = df[df["Activité principale"].isin(sector)]
+    if categories:
+        df = df[df["Sous-Catégorie"].str.contains('|'.join(categories), na=False)]
     if effectif:
         df = df[df["Effectif_def"].isin(effectif)]
     if year_range:
@@ -491,12 +483,12 @@ def top_startup_size(sector, year_range, effectif):
 @app.callback(
     Output("cloud-words", "figure"),
     [
-        Input('sector-filter', 'value'),
+        Input('keyword-dropdown', 'value'),  # Remplacez 'sector-filter' par 'keyword-dropdown'
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
-    ])
-
-def top_startup_size(sector, year_range, effectif):
+    ]
+)
+def top_startup_size(categories, year_range, effectif):  # Renommez 'sector' en 'categories'
     from wordcloud import WordCloud
     from collections import Counter
     import plotly.graph_objects as go
@@ -504,8 +496,8 @@ def top_startup_size(sector, year_range, effectif):
     df = get_dataframe("societes.csv")
     df['date_creation_def'] = pd.to_datetime(df['date_creation_def'], errors="coerce")
     df["annee_creation"] = df["date_creation_def"].dt.year  # Extraire l'année
-    if sector:
-        df = df[df["Activité principale"].isin(sector)]
+    if categories:
+        df = df[df["Sous-Catégorie"].str.contains('|'.join(categories), na=False)]
     if effectif:
         df = df[df["Effectif_def"].isin(effectif)]
     if year_range:
@@ -546,20 +538,20 @@ def top_startup_size(sector, year_range, effectif):
 @app.callback(
     Output("top-subcategories", "figure"),
     [
-        Input('sector-filter', 'value'),
+        Input('keyword-dropdown', 'value'),  # Remplacez 'sector-filter' par 'keyword-dropdown'
         Input('year-filter', 'value'),
         Input('effectif-filter', 'value')
     ]
 )
-def update_top_subcategories(sector, year_range, effectif):
+def update_top_subcategories(categories, year_range, effectif):  # Renommez 'sector' en 'categories'
     df2 = get_dataframe("societes.csv") 
     
     df2['date_creation_def'] = pd.to_datetime(df2['date_creation_def'], errors="coerce")
     df2["annee_creation"] = df2["date_creation_def"].dt.year
 
     # Appliquer les filtres
-    if sector:
-        df2 = df2[df2["Activité principale"].isin(sector)]
+    if categories:
+        df2 = df2[df2["Sous-Catégorie"].str.contains('|'.join(categories), na=False)]
     if effectif:
         df2 = df2[df2["Effectif_def"].isin(effectif)]
     if year_range:
@@ -586,14 +578,12 @@ def update_top_subcategories(sector, year_range, effectif):
     ))
 
     fig.update_layout(
-        title="Top 10 des sous-catégories de mots-clés",
         xaxis_title="Fréquence",
         yaxis_title="Sous-catégorie",
         yaxis=dict(categoryorder='total ascending')
     )
 
     return fig
-
 
 if __name__ == '__main__':
     app.run_server(debug=True)
